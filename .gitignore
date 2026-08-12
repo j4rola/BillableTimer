@@ -1,0 +1,9 @@
+# Swift Package Manager build artifacts
+.build/
+.swiftpm/
+
+# build.sh output bundle
+build/
+
+# macOS
+.DS_Store
