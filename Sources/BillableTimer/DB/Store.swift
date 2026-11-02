@@ -281,7 +281,14 @@ final class Store {
     func invoices() throws -> [Invoice] {
         try db.query(
             """
-            SELECT i.*, c.name AS client_name
+            SELECT i.*, c.name AS client_name,
+                   (SELECT GROUP_CONCAT(name, ' + ') FROM (
+                       SELECT DISTINCT other.name FROM entries e
+                       JOIN projects m ON m.id = e.project_id
+                       JOIN clients other ON other.id = m.client_id
+                       WHERE e.invoice_id = i.id AND other.id <> i.client_id
+                       ORDER BY other.name COLLATE NOCASE
+                   )) AS other_clients
             FROM invoices i
             JOIN clients c ON c.id = i.client_id
             ORDER BY i.issued_at DESC

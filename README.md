@@ -54,12 +54,11 @@ The schema is identical, so the database moves between platforms: copy
 `~/.local/share/BillableTimer/` with both apps quit. Paths of invoices issued on
 the Mac stay recorded as Mac paths, so **Open PDF** will not find those files.
 
-The Linux Invoices page can also combine clients: tick several in the **Bill to**
-menu. The first one ticked is billed, and the button lists them in that order. All
-of their uninvoiced time goes on the same invoice with each line labelled by
-client, and deleting the invoice
-releases all of it. No schema change is involved, so the macOS app can still read
-the file; it lists a combined invoice under the billed client only.
+The Invoices page on both platforms can combine clients: tick several in the
+**Bill to** menu. The first one ticked is billed, and the button lists them in
+that order. All of their uninvoiced time goes on the same invoice with each line
+labelled by client, and deleting the invoice releases all of it. No schema change
+is involved, so a database with combined invoices opens on either platform.
 
 Closing the window keeps the app in the system tray, which needs a host for
 StatusNotifierItem (Omarchy's bar has one). Left-click opens the window;

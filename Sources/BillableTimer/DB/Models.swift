@@ -73,6 +73,12 @@ struct Entry: Identifiable, Hashable {
         Int((hours(asOf: now) * Double(rateCents)).rounded())
     }
 
+    /// An invoice line's name. On a combined invoice the project alone wouldn't
+    /// say whose time it is.
+    func invoiceLabel(showingClient: Bool) -> String {
+        showingClient ? "\(clientName) › \(projectName)" : projectName
+    }
+
     static func from(_ row: Row) -> Entry {
         Entry(
             id: row.intOr("id"),
@@ -123,8 +129,11 @@ struct Invoice: Identifiable, Hashable {
     var totalCents: Int
     var seconds: Int
     var filePath: String
+    /// Clients other than the billed one whose time is on this invoice.
+    var otherClients: String
 
     var hours: Double { Double(seconds) / 3600 }
+    var clientLabel: String { otherClients.isEmpty ? clientName : "\(clientName) + \(otherClients)" }
 
     static func from(_ row: Row) -> Invoice {
         Invoice(
@@ -137,7 +146,8 @@ struct Invoice: Identifiable, Hashable {
             periodEnd: Date(timeIntervalSince1970: TimeInterval(row.intOr("period_end"))),
             totalCents: Int(row.intOr("total_cents")),
             seconds: Int(row.intOr("seconds")),
-            filePath: row.stringOr("file_path")
+            filePath: row.stringOr("file_path"),
+            otherClients: row.stringOr("other_clients")
         )
     }
 }

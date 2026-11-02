@@ -4,14 +4,23 @@ import AppKit
 struct InvoicesView: View {
     @EnvironmentObject var model: AppModel
 
-    @State private var clientId: Int64?
+    /// Ticked clients, in the order they were ticked. The first is the one billed.
+    @State private var selectedIds: [Int64] = []
+    @State private var showingClients = false
     @State private var periodStart = Date()
     @State private var periodEnd = Date()
     @State private var billable: [Entry] = []
     @State private var initialized = false
 
+    /// The client billed: whichever was ticked first.
     private var selectedClient: Client? {
-        model.clients.first { $0.id == clientId }
+        model.clients.first { $0.id == selectedIds.first }
+    }
+
+    private var selectedNames: String {
+        selectedIds
+            .compactMap { id in model.clients.first { $0.id == id }?.name }
+            .joined(separator: " + ")
     }
 
     private var range: DateRange {
@@ -36,7 +45,7 @@ struct InvoicesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHeader(title: "Invoices", subtitle: "Bills stopped, not-yet-invoiced time for one client.")
+            PaneHeader(title: "Invoices", subtitle: "Bills stopped, not-yet-invoiced time for one client, or several combined.")
 
             if model.clients.isEmpty {
                 EmptyHint(
@@ -62,7 +71,7 @@ struct InvoicesView: View {
     private func initializeOnce() {
         guard !initialized else { return }
         initialized = true
-        clientId = model.clients.first?.id
+        selectedIds = model.clients.first.map { [$0.id] } ?? []
         // Default to the two-week period that just ended.
         let current = Periods.twoWeeks(
             containing: Date(),
@@ -75,9 +84,10 @@ struct InvoicesView: View {
     }
 
     private func refresh() {
-        guard let clientId else { billable = []; return }
         do {
-            billable = try model.store.billableEntries(clientId: clientId, in: range)
+            billable = try selectedIds
+                .flatMap { try model.store.billableEntries(clientId: $0, in: range) }
+                .sorted { $0.startedAt < $1.startedAt }
         } catch {
             model.errorMessage = error.localizedDescription
             billable = []
@@ -86,16 +96,49 @@ struct InvoicesView: View {
 
     // MARK: - Controls
 
+    private func isSelected(_ id: Int64) -> Binding<Bool> {
+        Binding(
+            get: { selectedIds.contains(id) },
+            set: { ticked in
+                selectedIds.removeAll { $0 == id }
+                if ticked { selectedIds.append(id) }
+                refresh()
+            }
+        )
+    }
+
+    /// A popover rather than a `Menu`, which would close after every tick.
+    private var clientChooser: some View {
+        HStack(spacing: 8) {
+            Text("Bill to")
+            Button {
+                showingClients.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Text(selectedNames.isEmpty ? "Choose Clients…" : selectedNames)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                }
+            }
+            .popover(isPresented: $showingClients, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(model.clients) { client in
+                        Toggle(client.name, isOn: isSelected(client.id))
+                            .toggleStyle(.checkbox)
+                    }
+                }
+                .padding(12)
+            }
+        }
+        .frame(width: 260)
+    }
+
     private var controls: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                Picker("Client", selection: Binding(
-                    get: { clientId ?? -1 },
-                    set: { clientId = $0; refresh() }
-                )) {
-                    ForEach(model.clients) { Text($0.name).tag($0.id) }
-                }
-                .frame(width: 260)
+                clientChooser
 
                 DatePicker("From", selection: Binding(
                     get: { periodStart },
@@ -167,7 +210,7 @@ struct InvoicesView: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .frame(width: 60, alignment: .leading)
-                            Text(entry.projectName)
+                            Text(entry.invoiceLabel(showingClient: selectedIds.count > 1))
                                 .font(.caption)
                                 .frame(width: 150, alignment: .leading)
                                 .lineLimit(1)
@@ -211,7 +254,7 @@ struct InvoicesView: View {
                             Text(invoice.number)
                                 .font(.caption.monospacedDigit().weight(.medium))
                                 .frame(width: 90, alignment: .leading)
-                            Text(invoice.clientName)
+                            Text(invoice.clientLabel)
                                 .font(.caption)
                                 .frame(width: 160, alignment: .leading)
                                 .lineLimit(1)

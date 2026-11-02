@@ -13,6 +13,7 @@ enum InvoicePDF {
         var period: DateRange
         var entries: [Entry]
 
+        var spansClients: Bool { Set(entries.map(\.clientId)).count > 1 }
         var totalSeconds: Int { entries.reduce(0) { $0 + $1.seconds(asOf: $1.endedAt ?? Date()) } }
         var totalCents: Int { entries.reduce(0) { $0 + $1.amountCents(asOf: $1.endedAt ?? Date()) } }
     }
@@ -131,11 +132,13 @@ enum InvoicePDF {
     }
 
     private static func buildRows(_ input: Input) -> [RenderRow] {
-        input.entries.map { entry in
+        let showingClient = input.spansClients
+        return input.entries.map { entry in
             let end = entry.endedAt ?? Date()
             let seconds = entry.seconds(asOf: end)
             let description = entry.note.trimmingCharacters(in: .whitespacesAndNewlines)
             let date = Format.compactDate.string(from: entry.startedAt)
+            let project = entry.invoiceLabel(showingClient: showingClient)
             let hours = Format.hours(seconds)
             let rate = Format.money(entry.rateCents)
             let amount = Format.money(entry.amountCents(asOf: end))
@@ -143,12 +146,12 @@ enum InvoicePDF {
             // The row is as tall as its tallest wrapping cell.
             let cellHeights = [
                 height(attributed(date, font: cellFont, color: inkColor, alignment: .left), width: colDate.width),
-                height(attributed(entry.projectName, font: cellFont, color: inkColor, alignment: .left), width: colProject.width),
+                height(attributed(project, font: cellFont, color: inkColor, alignment: .left), width: colProject.width),
                 height(attributed(description.isEmpty ? "—" : description, font: cellFont, color: inkColor, alignment: .left), width: colDescription.width)
             ]
             return RenderRow(
                 date: date,
-                project: entry.projectName,
+                project: project,
                 description: description.isEmpty ? "—" : description,
                 hours: hours,
                 rate: rate,
