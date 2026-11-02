@@ -1,0 +1,4 @@
+#!/bin/bash
+# Runs BillableTimer straight from the source tree.
+cd "$(dirname "$(readlink -f "$0")")"
+exec python3 -m billabletimer "$@"

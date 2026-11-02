@@ -36,6 +36,37 @@ or two while SwiftUI settles.
 
 Requires Xcode's Swift toolchain (Swift 5.9+ / macOS 14+).
 
+### Linux
+
+`linux/` is a GTK4/libadwaita port with the same features, written in Python. It
+needs no third-party packages beyond what a GNOME-capable desktop already has:
+`gtk4`, `libadwaita`, `python-gobject`, `python-cairo`, and a sans font.
+
+```sh
+linux/run.sh                       # run from the source tree
+linux/install.sh                   # install to ~/.local (launcher entry + `billabletimer`)
+linux/install.sh --uninstall       # remove the app; billing data stays
+cd linux && python3 -m unittest discover tests
+```
+
+The schema is identical, so the database moves between platforms: copy
+`billabletimer.sqlite3` from the macOS path below to
+`~/.local/share/BillableTimer/` with both apps quit. Paths of invoices issued on
+the Mac stay recorded as Mac paths, so **Open PDF** will not find those files.
+
+The Linux Invoices page can also combine clients: tick several in the **Bill to**
+menu. The first one ticked is billed, and the button lists them in that order. All
+of their uninvoiced time goes on the same invoice with each line labelled by
+client, and deleting the invoice
+releases all of it. No schema change is involved, so the macOS app can still read
+the file; it lists a combined invoice under the billed client only.
+
+Closing the window keeps the app in the system tray, which needs a host for
+StatusNotifierItem (Omarchy's bar has one). Left-click opens the window;
+right-click starts and stops timers. Trays have no text slot, so the live clock
+is in the tooltip and menu, and the icon gains a red dot while anything runs.
+Without a tray host, closing the window quits; running timers survive either way.
+
 ### The icon
 
 The artwork is `Resources/hare-source.png`. `Icon/GenerateIcon.swift` composites

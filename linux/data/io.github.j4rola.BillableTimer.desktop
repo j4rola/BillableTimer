@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BillableTimer
+Comment=Time billing: multiple timers, reports, and PDF invoices
+Exec=billabletimer
+Icon=io.github.j4rola.BillableTimer
+Categories=Office;Finance;
+Terminal=false
+StartupNotify=true
