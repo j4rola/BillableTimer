@@ -21,6 +21,10 @@ ITEM_PATH = "/StatusNotifierItem"
 MENU_PATH = "/MenuBar"
 WATCHER = "org.kde.StatusNotifierWatcher"
 MAX_START_ITEMS = 12
+# Menu rows: the bar's menu fits about 23 characters of its monospace font.
+ROW_CHARS = 21
+PLAY_GLYPH = "\uf04b"   # Nerd Font play
+PAUSE_GLYPH = "\uf04c"  # Nerd Font pause
 
 ITEM_XML = """
 <node><interface name="org.kde.StatusNotifierItem">
@@ -158,11 +162,19 @@ class Tray:
     # StatusNotifierItem
 
     def _status_text(self) -> str:
+        """Two lines: the live running time, then today's total across all
+        timers. Both go in the tooltip title, since the Omarchy bar shows only
+        that field."""
         model = self.model
         count = len(model.running)
+        today = sum(e.seconds(model.now) for e in model.today_entries)
         if count:
-            return f"{core.fmt_clock(model.running_seconds())} · {count} running"
-        return "BillableTimer"
+            current = f"Current: {core.fmt_clock(model.running_seconds())}"
+            if count > 1:
+                current += f" ({count} running)"
+        else:
+            current = "No timer running"
+        return f"{current}\nToday: {core.fmt_clock(today)}"
 
     def _item_property(self, _conn, _sender, _path, _iface, name):
         running = bool(self.model.running)
@@ -211,6 +223,15 @@ class Tray:
     def _label(text: str) -> str:
         return text.replace("_", "__")  # a lone underscore marks a mnemonic
 
+    @staticmethod
+    def _row(name: str, elapsed: str, running: bool) -> str:
+        """`name   elapsed  ⏸` ROW_CHARS + 1 characters, the button last."""
+        button = PAUSE_GLYPH if running else PLAY_GLYPH
+        width = ROW_CHARS - len(elapsed) - 3  # gaps either side of the time
+        if len(name) > width:
+            name = name[:width - 1] + "…"
+        return f"{name:<{width}} {elapsed}  {button}" if elapsed else f"{name:<{width}}   {button}"
+
     def _items(self) -> list[tuple[int, dict]]:
         model = self.model
         items: list[tuple[int, dict]] = []
@@ -231,19 +252,43 @@ class Tray:
         today = sum(e.seconds(now) for e in model.today_entries)
         text(1, f"Today: {core.fmt_duration(today)}")
         separator(2)
-        if model.running:
-            for entry in model.running:
-                label = f"Stop {entry.project_name} ({entry.client_name}) · {core.fmt_clock(entry.seconds(now))}"
-                text(1_000_000 + entry.id, label, lambda e=entry: model.stop_timer(e))
-            if len(model.running) > 1:
-                text(3, "Stop All", model.stop_all)
-            separator(4)
-        if model.projects:
-            for project in model.projects[:MAX_START_ITEMS]:
-                text(2_000_000 + project.id, f"Start {project.name} ({project.client_name})",
-                     lambda p=project: model.start_timer(p.id))
-        else:
+
+        # One row per project, its play/pause button in a column at the right.
+        # The bar draws labels in its monospace font and gives the menu a fixed
+        # width of about 23 characters, so the name is padded (or trimmed) to a
+        # fixed length and the button lands in the same place on every row.
+        running_by_project: dict[int, list] = {}
+        for entry in model.running:
+            running_by_project.setdefault(entry.project_id, []).append(entry)
+
+        rows = [(p.id, p.name, p.client_name, running_by_project.get(p.id, []))
+                for p in model.projects[:MAX_START_ITEMS]]
+        shown = {project_id for project_id, *_ in rows}
+        # Running timers whose project isn't in the list above still get a row.
+        for project_id, entries in running_by_project.items():
+            if project_id not in shown:
+                rows.append((project_id, entries[0].project_name, entries[0].client_name, entries))
+        names = [name for _, name, _, _ in rows]
+
+        def stop(entries):
+            for entry in entries:
+                model.stop_timer(entry)
+
+        for project_id, name, client, entries in rows:
+            if names.count(name) > 1:
+                name = f"{name} ({client})"
+            if entries:
+                elapsed = core.fmt_duration(sum(e.seconds(now) for e in entries))
+                action = lambda es=entries: stop(es)
+            else:
+                elapsed = ""
+                action = lambda pid=project_id: model.start_timer(pid)
+            text(2_000_000 + project_id, self._row(name, elapsed, bool(entries)), action)
+        if not model.projects and not model.running:
             text(5, "Add a client and project in the main window first.")
+        if len(model.running) > 1:
+            separator(4)
+            text(3, "Stop All", model.stop_all)
         separator(6)
         text(7, "Open BillableTimer", self.open_main)
         text(8, "Quit", self.quit_app)
@@ -251,8 +296,10 @@ class Tray:
         return items
 
     def _layout(self) -> GLib.Variant:
+        # PyGObject boxes each `av` element in a variant itself; wrapping them
+        # here too nested them twice, and the bar showed rows with no labels.
         children = [
-            GLib.Variant("v", GLib.Variant("(ia{sv}av)", (item_id, props, [])))
+            GLib.Variant("(ia{sv}av)", (item_id, props, []))
             for item_id, props in self._items()
         ]
         root = {"children-display": GLib.Variant("s", "submenu")}
