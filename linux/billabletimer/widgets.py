@@ -104,6 +104,21 @@ def action_menu(items: list) -> Gtk.MenuButton:
                           css_classes=["flat"], valign=Gtk.Align.CENTER)
 
 
+def select_all_on_focus(widget: Gtk.Widget) -> Gtk.Widget:
+    """Selects a field's whole value when it gains focus (click or Tab), so a
+    number can be retyped without first clearing it. Deferred to idle so it
+    runs after GTK places the cursor for the click itself."""
+    def select(*_args) -> bool:
+        if widget.has_focus() or widget.get_focus_child() is not None:
+            widget.select_region(0, -1)
+        return GLib.SOURCE_REMOVE
+
+    focus = Gtk.EventControllerFocus()
+    focus.connect("enter", lambda _c: GLib.idle_add(select))
+    widget.add_controller(focus)
+    return widget
+
+
 def icon_label_button(icon: str, text: str, *classes: str) -> Gtk.Button:
     button = Gtk.Button(css_classes=list(classes))
     button.set_child(Adw.ButtonContent(icon_name=icon, label=text))
@@ -126,17 +141,26 @@ class DateTimeButton(Gtk.MenuButton):
         box = vbox(8)
         box.append(self.calendar)
         if with_time:
-            self.hour = Gtk.SpinButton.new_with_range(0, 23, 1)
+            self.hour = Gtk.SpinButton.new_with_range(1, 12, 1)
             self.minute = Gtk.SpinButton.new_with_range(0, 59, 1)
             for spin in (self.hour, self.minute):
                 spin.set_wrap(True)
                 spin.set_numeric(True)
                 spin.connect("value-changed", self._picked)
+                select_all_on_focus(spin)
             self.minute.connect("output", self._pad_minutes)
+            self.am = Gtk.ToggleButton(label="AM")
+            self.pm = Gtk.ToggleButton(label="PM", group=self.am)
+            for toggle in (self.am, self.pm):
+                toggle.connect("toggled", self._meridiem_toggled)
+            meridiem = hbox(0, css_classes=["linked"], valign=Gtk.Align.CENTER)
+            meridiem.append(self.am)
+            meridiem.append(self.pm)
             row = hbox(6, halign=Gtk.Align.CENTER)
             row.append(self.hour)
             row.append(label(":"))
             row.append(self.minute)
+            row.append(meridiem)
             box.append(row)
         popover = Gtk.Popover()
         popover.set_child(box)
@@ -148,13 +172,19 @@ class DateTimeButton(Gtk.MenuButton):
         spin.set_text(f"{int(spin.get_value()):02d}")
         return True
 
+    def _meridiem_toggled(self, toggle: Gtk.ToggleButton) -> None:
+        # Both buttons fire on a switch; only react to the one turning on.
+        if toggle.get_active():
+            self._picked()
+
     def _load(self) -> None:
         self._loading = True
         value = self._value
         self.calendar.select_day(GLib.DateTime.new_local(value.year, value.month, value.day, 12, 0, 0))
         if self.with_time:
-            self.hour.set_value(value.hour)
+            self.hour.set_value(value.hour % 12 or 12)
             self.minute.set_value(value.minute)
+            (self.pm if value.hour >= 12 else self.am).set_active(True)
         self._loading = False
         self._show()
 
@@ -169,8 +199,8 @@ class DateTimeButton(Gtk.MenuButton):
         self._value = self._value.replace(year=picked.get_year(), month=picked.get_month(),
                                           day=picked.get_day_of_month())
         if self.with_time:
-            self._value = self._value.replace(hour=int(self.hour.get_value()),
-                                              minute=int(self.minute.get_value()))
+            hour = int(self.hour.get_value()) % 12 + (12 if self.pm.get_active() else 0)
+            self._value = self._value.replace(hour=hour, minute=int(self.minute.get_value()))
         self._show()
         if self.on_change:
             self.on_change()

@@ -15,7 +15,8 @@ from .core import Client, Entry, Project, fmt_duration, fmt_hours, fmt_money
 from .model import AppModel
 from .widgets import (
     DateTimeButton, EditorDialog, Page, PeriodBar, TextRow, action_menu, clear, divider, dot,
-    empty_hint, hbox, icon_label_button, label, scrolled, section_title, stat_row, vbox,
+    empty_hint, hbox, icon_label_button, label, scrolled, section_title, select_all_on_focus,
+    stat_row, vbox,
 )
 
 gi.require_foreign("cairo")
@@ -286,6 +287,7 @@ class EntryEditor(EditorDialog):
                                      text="" if entry else "0")
             for field in (self.hours, self.minutes):
                 field.connect("changed", lambda _e: self.update_state())
+                select_all_on_focus(field)
             self.duration_row = Adw.ActionRow(title="Duration")
             for widget in (self.hours, label("h", "dim-label"), self.minutes, label("m", "dim-label")):
                 self.duration_row.add_suffix(widget)
@@ -652,7 +654,7 @@ class ClientEditor(EditorDialog):
         self.client = client
         self.name = Adw.EntryRow(title="Name", text=client.name if client else "")
         rate = f"{client.hourly_rate_cents / 100:.2f}" if client else ""
-        self.rate = Adw.EntryRow(title="Hourly rate (e.g. 250.00)", text=rate)
+        self.rate = select_all_on_focus(Adw.EntryRow(title="Hourly rate (e.g. 250.00)", text=rate))
         self.address = TextRow("Billing address", client.address if client else "")
         self.notes = TextRow("Notes", client.notes if client else "")
         for row in (self.name, self.rate, self.address, self.notes):
@@ -692,8 +694,8 @@ class ProjectEditor(EditorDialog):
 
         self.name = Adw.EntryRow(title="Project name", text=project.name if project else "")
         self.custom = Adw.SwitchRow(title="Override the client rate", active=override is not None)
-        self.rate = Adw.EntryRow(title="Hourly rate (e.g. 300.00)",
-                                 text=f"{override / 100:.2f}" if override is not None else "")
+        self.rate = select_all_on_focus(Adw.EntryRow(title="Hourly rate (e.g. 300.00)",
+                                 text=f"{override / 100:.2f}" if override is not None else ""))
         self.inherited = Adw.ActionRow(title="Rate", subtitle=f"{fmt_money(client_rate)}/h (from client)")
         for row in (self.name, self.custom, self.rate, self.inherited):
             self.group.add(row)
@@ -975,7 +977,7 @@ class SettingsPage(Page):
         self.address = TextRow("Address", on_change=lambda t: self._set("business_address", t))
         self.email = Adw.EntryRow(title="Email")
         self.prefix = Adw.EntryRow(title="Number prefix")
-        self.next_number = Adw.SpinRow.new_with_range(1, 999_999, 1)
+        self.next_number = select_all_on_focus(Adw.SpinRow.new_with_range(1, 999_999, 1))
         self.next_number.set_title("Next invoice number")
         self.terms = TextRow("Payment terms", on_change=lambda t: self._set("invoice_terms", t))
         self.weekday = combo_row("Week starts on", ["Sunday", "Monday"])
